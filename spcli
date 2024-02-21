@@ -1,0 +1,123 @@
+#!/bin/bash
+
+source "$XDG_CONFIG_HOME/spcli.conf"
+
+function req_get(){
+	curl -sL -H "Authorization: ${TOKEN}" "https://api.apparyllis.com/v1/${1}"
+}
+
+function req_post(){
+	curl -sL -X POST -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
+}
+
+function req_patch(){
+	curl -sL -X PATCH -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
+}
+
+function getFriendFronters(){
+	_fronting=$(req_get "friend/$1/getFront")
+	_members=$(req_get "members/$1")
+
+	while read -r fronter; do
+		name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
+		status=$(jq -r ".statuses[\"$fronter\"]" <<< "$_fronting")
+
+		if [ "$status" = "null" ]; then
+			echo "${name}"
+		else
+			echo "${name}: ${status}"
+		fi
+	done < <(jq -r ".fronters[]" <<< "$_fronting")
+}
+
+function getFronting(){
+	_me=$(req_get "me" | jq -r ".id")
+	_fronting=$(req_get "fronters")
+	_members=$(req_get "members/$_me")
+
+	while read -r fronter; do
+		name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
+		status=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.customStatus" <<< "$_fronting")
+		date=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.startTime | . / 1000 | \"@\\(.)\"" <<< "$_fronting" | date +"%c" -f -)
+
+		if [ "$status" = "null" ]; then
+			echo "${name} - ${date}"
+		else
+			echo "${name}: ${status} - ${date}"
+		fi
+	done < <(jq -r ".[] | .content.member" <<< "$_fronting")
+}
+
+function addFront(){
+	_member="$1"
+	_starttime=$(date +%s%3N)
+
+	result=$(req_post "frontHistory/" "{\"custom\":false,\"startTime\":$_starttime,\"member\":\"$_member\",\"live\":true}")
+	echo "Added, ID:" $result
+}
+
+function removeFront(){
+	_member="$1"
+	_endtime=$(date +%s%3N)
+	_docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
+	result=$(req_patch "frontHistory/$_docId" "{\"live\":false,\"endTime\":$_endtime,\"member\":\"$_member\"}")
+
+	if [ -z "$result" ]; then
+		echo "Removed"
+	else
+		echo $result
+	fi
+}
+
+function setCustomStatus(){
+	_member="$1"
+	_customStatus="$2"
+	_docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
+	result=$(req_patch "frontHistory/$_docId" "{\"member\":\"$_member\",\"customStatus\":\"$_customStatus\"}")
+
+	if [ -z "$result" ]; then
+		echo "Custom status set."
+	else
+		echo $result
+	fi
+}
+
+
+case $1 in
+	friends)
+		if [ -n "${users[$2]}" ]; then
+			getFriendFronters "${users[$2]}"
+			exit 0
+		fi
+		getFriendFronters "$2"
+		exit 0
+		;;
+	fronts)
+		getFronting
+		exit 0
+		;;
+	add)
+		if [ -n "${members[$2]}" ]; then
+			addFront "${members[$2]}"
+			exit 0
+		fi
+		addFront "$2"
+		exit 0
+		;;
+	remove)
+		if [ -n "${members[$2]}" ]; then
+			removeFront "${members[$2]}"
+			exit 0
+		fi
+		removeFront "$2"
+		exit 0
+		;;
+	status)
+		if [ -n "${members[$2]}" ]; then
+			setCustomStatus "${members[$2]}" "$3"
+			exit 0
+		fi
+		setCustomStatus "$2" "$3"
+		exit 0
+		;;
+esac
