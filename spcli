@@ -1,6 +1,13 @@
 #!/bin/bash
 
-source "$XDG_CONFIG_HOME/spcli.conf"
+config="${XDG_CONFIG_HOME:-~/.config}/spcli.conf"
+
+if [ ! -f "$config" ]; then
+	echo "Config file does not exist!"
+	exit 1
+fi
+
+source "$config"
 
 function req_get(){
 	curl -sL -H "Authorization: ${TOKEN}" "https://api.apparyllis.com/v1/${1}"
@@ -69,6 +76,15 @@ function removeFront(){
 	fi
 }
 
+function setFront(){
+	_member="$1"
+	_fronting=$(req_get "fronters")
+	while read -r fronter; do
+		removeFront "$fronter"
+	done < <(jq -r ".[] | .content.member" <<< "$_fronting")
+	addFront "$_member"
+}
+
 function setCustomStatus(){
 	_member="$1"
 	_customStatus="$2"
@@ -110,6 +126,14 @@ case $1 in
 			exit 0
 		fi
 		removeFront "$2"
+		exit 0
+		;;
+	set)
+		if [ -n "${members[$2]}" ]; then
+			setFront "${members[$2]}"
+			exit 0
+		fi
+		setFront "$2"
 		exit 0
 		;;
 	status)
