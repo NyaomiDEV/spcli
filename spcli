@@ -9,25 +9,56 @@ fi
 
 source "$config"
 
+#
+# cURL
+#
+
 function req_get(){
-	curl -sL -H "Authorization: ${TOKEN}" "https://api.apparyllis.com/v1/${1}"
+	curl --fail -sL -H "Authorization: ${TOKEN}" "https://api.apparyllis.com/v1/${1}"
+	if [ $? -ne 0 ]; then
+		echo "GET request to ${1} failed."
+		exit 1
+	fi
 }
 
 function req_post(){
-	curl -sL -X POST -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
+	curl --fail -sL -X POST -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
+	if [ $? -ne 0 ]; then
+		echo "POST request to ${1} with data '${2}' failed."
+		exit 1
+	fi
 }
 
 function req_patch(){
-	curl -sL -X PATCH -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
+	curl --fail -sL -X PATCH -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
+	if [ $? -ne 0 ]; then
+		echo "PATCH request to ${1} with data '${2}' failed."
+		exit 1
+	fi
 }
 
+#
+# API
+#
+
 function getFriendFronters(){
-	_fronting=$(req_get "friend/$1/getFront")
-	_members=$(req_get "members/$1")
+	local _user=$(req_get "user/$1")
+	local _fronting=$(req_get "friend/$1/getFront")
+	local _userName=$(jq -r ".content.username" <<< "$_user")
+
+	local _members=$(req_get "members/$1")
+	local _customFronts=$(req_get "customFronts/$1")
+
+	echo "Currently fronting at $_userName:"
 
 	while read -r fronter; do
-		name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
-		status=$(jq -r ".statuses[\"$fronter\"]" <<< "$_fronting")
+		local name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
+
+		if [ -z "$name" ]; then
+			name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_customFronts")
+		fi
+
+		local status=$(jq -r ".statuses[\"$fronter\"]" <<< "$_fronting")
 
 		if [ "$status" = "null" ]; then
 			echo "${name}"
@@ -38,14 +69,22 @@ function getFriendFronters(){
 }
 
 function getFronting(){
-	_me=$(req_get "me" | jq -r ".id")
-	_fronting=$(req_get "fronters")
-	_members=$(req_get "members/$_me")
+	local _me=$(req_get "me" | jq -r ".id")
+	local _fronting=$(req_get "fronters")
+	local _members=$(req_get "members/$_me")
+	local _customFronts=$(req_get "customFronts/$_me")
+
+	echo "Currently fronting:"
 
 	while read -r fronter; do
-		name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
-		status=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.customStatus" <<< "$_fronting")
-		date=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.startTime | . / 1000 | \"@\\(.)\"" <<< "$_fronting" | date +"%c" -f -)
+		local name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
+
+		if [ -z "$name" ]; then
+			name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_customFronts")
+		fi
+
+		local status=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.customStatus" <<< "$_fronting")
+		local date=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.startTime | . / 1000 | \"@\\(.)\"" <<< "$_fronting" | date +"%c" -f -)
 
 		if [ "$status" = "null" ]; then
 			echo "${name} - ${date}"
@@ -56,48 +95,45 @@ function getFronting(){
 }
 
 function addFront(){
-	_member="$1"
-	_starttime=$(date +%s%3N)
+	local _member="$1"
+	local _starttime=$(date +%s%3N)
 
-	result=$(req_post "frontHistory/" "{\"custom\":false,\"startTime\":$_starttime,\"member\":\"$_member\",\"live\":true}")
-	echo "Added, ID:" $result
+	local result=$(req_post "frontHistory/" "{\"custom\":false,\"startTime\":$_starttime,\"member\":\"$_member\",\"live\":true}" | jq -r .)
+
+	echo "Added $1 to front. Fronting History ID: $result"
 }
 
 function removeFront(){
-	_member="$1"
-	_endtime=$(date +%s%3N)
-	_docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
-	result=$(req_patch "frontHistory/$_docId" "{\"live\":false,\"endTime\":$_endtime,\"member\":\"$_member\"}")
+	local _member="$1"
+	local _endtime=$(date +%s%3N)
+	local _docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
 
-	if [ -z "$result" ]; then
-		echo "Removed"
-	else
-		echo $result
-	fi
+	local result=$(req_patch "frontHistory/$_docId" "{\"live\":false,\"endTime\":$_endtime,\"member\":\"$_member\"}")
+
+	echo "Removed $1 from front."
 }
 
 function setFront(){
-	_member="$1"
-	_fronting=$(req_get "fronters")
+	local _fronting=$(req_get "fronters")
 	while read -r fronter; do
 		removeFront "$fronter"
 	done < <(jq -r ".[] | .content.member" <<< "$_fronting")
-	addFront "$_member"
+	addFront "$1"
 }
 
 function setCustomStatus(){
-	_member="$1"
-	_customStatus="$2"
-	_docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
-	result=$(req_patch "frontHistory/$_docId" "{\"member\":\"$_member\",\"customStatus\":\"$_customStatus\"}")
+	local _member="$1"
+	local _customStatus="$2"
+	local _docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
 
-	if [ -z "$result" ]; then
-		echo "Custom status set."
-	else
-		echo $result
-	fi
+	local result=$(req_patch "frontHistory/$_docId" "{\"member\":\"$_member\",\"customStatus\":\"$_customStatus\"}")
+
+	echo "Custom status set to:" $2
 }
 
+#
+# Plumbing
+#
 
 case $1 in
 	friends)
