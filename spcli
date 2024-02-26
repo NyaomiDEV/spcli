@@ -84,12 +84,13 @@ function getFronting(){
 		fi
 
 		local status=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.customStatus" <<< "$_fronting")
-		local date=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.startTime | . / 1000 | \"@\\(.)\"" <<< "$_fronting" | date +"%c" -f -)
+		local date=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.startTime | . / 1000 | floor" <<< "$_fronting")
+		local relativeDate=$(getRelativeDate "$date")
 
 		if [ "$status" = "null" ]; then
 			echo "${name} - ${date}"
 		else
-			echo "${name}: ${status} - ${date}"
+			echo "${name}: ${status} - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
 		fi
 	done < <(jq -r ".[] | .content.member" <<< "$_fronting")
 }
@@ -129,6 +130,21 @@ function setCustomStatus(){
 	local result=$(req_patch "frontHistory/$_docId" "{\"member\":\"$_member\",\"customStatus\":\"$_customStatus\"}")
 
 	echo "Custom status set to:" $2
+}
+
+#
+# Util
+#
+
+function getRelativeDate(){
+	local interval=$(($(date +%s) - "$1"))
+
+	local seconds=$(("$interval" % 60))
+	local minutes=$((("$interval" / 60) % 60))
+	local hours=$((("$interval" / 60 / 60) % 24))
+	local days=$(("$interval" / 60 / 60 / 24))
+
+	echo "${days}d ${hours}h ${minutes}m ${seconds}s"
 }
 
 #
