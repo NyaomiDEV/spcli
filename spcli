@@ -53,17 +53,19 @@ function getFriendFronters(){
 
 	while read -r fronter; do
 		local name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
+		local color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_members")
 
 		if [ -z "$name" ]; then
 			name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_customFronts")
+			color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_customFronts")
 		fi
 
 		local status=$(jq -r ".statuses[\"$fronter\"]" <<< "$_fronting")
 
 		if [ "$status" = "null" ]; then
-			echo "${name}"
+			echo "$(hexColor $color)${name}$(resetColor)"
 		else
-			echo "${name}: ${status}"
+			echo "$(hexColor $color)${name}$(resetColor): ${status}"
 		fi
 	done < <(jq -r ".fronters[]" <<< "$_fronting")
 }
@@ -78,9 +80,11 @@ function getFronting(){
 
 	while read -r fronter; do
 		local name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
+		local color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_members")
 
 		if [ -z "$name" ]; then
 			name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_customFronts")
+			color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_customFronts")
 		fi
 
 		local status=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.customStatus" <<< "$_fronting")
@@ -88,9 +92,9 @@ function getFronting(){
 		local relativeDate=$(getRelativeDate "$date")
 
 		if [ "$status" = "null" ]; then
-			echo "${name} - ${date}"
+			echo "$(hexColor $color)${name}$(resetColor) - ${date}"
 		else
-			echo "${name}: ${status} - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
+			echo "$(hexColor $color)${name}$(resetColor): ${status} - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
 		fi
 	done < <(jq -r ".[] | .content.member" <<< "$_fronting")
 }
@@ -145,6 +149,17 @@ function getRelativeDate(){
 	local days=$(("$interval" / 60 / 60 / 24))
 
 	echo "${days}d ${hours}h ${minutes}m ${seconds}s"
+}
+
+function hexColor(){
+	local r="$((16#${1:1:2}))"
+	local g="$((16#${1:3:2}))"
+	local b="$((16#${1:5:2}))"
+	[ "$COLOR" == "1" ] && echo -e "\033[38;2;${r};${g};${b}m"
+}
+
+function resetColor(){
+	[ "$COLOR" == "1" ] && echo -e "\033[m"
 }
 
 #
