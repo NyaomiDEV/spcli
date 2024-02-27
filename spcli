@@ -92,7 +92,7 @@ function getFronting(){
 		local relativeDate=$(getRelativeDate "$date")
 
 		if [ "$status" = "null" ]; then
-			echo "$(hexColor $color)${name}$(resetColor) - ${date}"
+			echo "$(hexColor $color)${name}$(resetColor) - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
 		else
 			echo "$(hexColor $color)${name}$(resetColor): ${status} - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
 		fi
