@@ -1,6 +1,7 @@
 #!/bin/bash
 
 config="${XDG_CONFIG_HOME:-~/.config}/spcli.conf"
+cachedir="${XDG_CACHE_HOME:-~/.cache}/spcli"
 
 if [ ! -f "$config" ]; then
 	echo "Config file does not exist!"
@@ -42,12 +43,12 @@ function req_patch(){
 #
 
 function getFriendFronters(){
-	local _user=$(req_get "user/$1")
+	local _user=$(getUser "$1")
 	local _fronting=$(req_get "friend/$1/getFront")
 	local _userName=$(jq -r ".content.username" <<< "$_user")
 
-	local _members=$(req_get "members/$1")
-	local _customFronts=$(req_get "customFronts/$1")
+	local _members=$(getMembers "$1")
+	local _customFronts=$(getCustomFronts "$1")
 
 	echo "Currently fronting at $_userName:"
 
@@ -71,10 +72,10 @@ function getFriendFronters(){
 }
 
 function getFronting(){
-	local _me=$(req_get "me" | jq -r ".id")
+	local _me=$(getMe | jq -r ".id")
 	local _fronting=$(req_get "fronters")
-	local _members=$(req_get "members/$_me")
-	local _customFronts=$(req_get "customFronts/$_me")
+	local _members=$(getMembers "$_me")
+	local _customFronts=$(getCustomFronts "$_me")
 
 	echo "Currently fronting:"
 
@@ -100,22 +101,28 @@ function getFronting(){
 }
 
 function addFront(){
+	local _me=$(getMe | jq -r ".id")
 	local _member="$1"
+	local _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getMembers "$_me")")
+	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getCustomFronts "$_me")")
 	local _starttime=$(date +%s%3N)
 
 	local result=$(req_post "frontHistory/" "{\"custom\":false,\"startTime\":$_starttime,\"member\":\"$_member\",\"live\":true}" | jq -r .)
 
-	echo "Added $1 to front. Fronting History ID: $result"
+	echo "Added $_memberName to front. Fronting History ID: $result"
 }
 
 function removeFront(){
+	local _me=$(getMe | jq -r ".id")
 	local _member="$1"
+	local _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getMembers "$_me")")
+	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getCustomFronts "$_me")")
 	local _endtime=$(date +%s%3N)
 	local _docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
 
 	local result=$(req_patch "frontHistory/$_docId" "{\"live\":false,\"endTime\":$_endtime,\"member\":\"$_member\"}")
 
-	echo "Removed $1 from front."
+	echo "Removed $_memberName from front."
 }
 
 function setFront(){
@@ -127,13 +134,16 @@ function setFront(){
 }
 
 function setCustomStatus(){
+	local _me=$(getMe | jq -r ".id")
 	local _member="$1"
+	local _memberName=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$(getMembers "$_me")")
+	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$(getCustomFronts "$_me")")
 	local _customStatus="$2"
 	local _docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
 
 	local result=$(req_patch "frontHistory/$_docId" "{\"member\":\"$_member\",\"customStatus\":\"$_customStatus\"}")
 
-	echo "Custom status set to:" $2
+	echo "Custom status for $_memberName set to:" $2
 }
 
 #
@@ -160,6 +170,78 @@ function hexColor(){
 
 function resetColor(){
 	[ "$COLOR" == "1" ] && echo -e "\033[m"
+}
+
+function getMe(){
+	local _cached=$(getCachedMe)
+	[ -n "$_cached" ] && echo "$_cached" && return
+
+	local _netreq=$(req_get "me")
+	[ -n "$_netreq" ] && saveCachedMe "$_netreq" && echo "$_netreq"
+}
+
+function getUser(){
+	local _cached=$(getCachedUser $1)
+	[ -n "$_cached" ] && echo "$_cached" && return
+
+	local _netreq=$(req_get "users/$1")
+	[ -n "$_netreq" ] && saveCachedUser "$1" "$_netreq" && echo "$_netreq"
+}
+
+function getMembers(){
+	local _cached=$(getCachedMembers $1)
+	[ -n "$_cached" ] && echo "$_cached" && return
+
+	local _netreq=$(req_get "members/$1")
+	[ -n "$_netreq" ] && saveCachedMembers "$1" "$_netreq" && echo "$_netreq"
+}
+
+function getCustomFronts(){
+	local _cached=$(getCachedCustomFronts $1)
+	[ -n "$_cached" ] && echo "$_cached" && return
+
+	local _netreq=$(req_get "customFronts/$1")
+	[ -n "$_netreq" ] && saveCachedCustomFronts "$1" "$_netreq" && echo "$_netreq"
+}
+
+function getCachedMe(){
+	[ -f "$cachedir/me.json" ] && [ "$(($(date +%s) - $(date -r "$cachedir/me.json" +%s)))" -lt 86400 ] &&
+	echo "$(<"$cachedir/me.json")"
+}
+
+function getCachedUser(){
+	[ -f "$cachedir/user/$1.json" ] && [ "$(($(date +%s) - $(date -r "$cachedir/user/$1.json" +%s)))" -lt 86400 ] &&
+	echo "$(<"$cachedir/user/$1.json")"
+}
+
+function getCachedMembers(){
+	[ -f "$cachedir/members/$1.json" ] && [ "$(($(date +%s) - $(date -r "$cachedir/members/$1.json" +%s)))" -lt 86400 ] &&
+	echo "$(<"$cachedir/members/$1.json")"
+}
+
+function getCachedCustomFronts(){
+	[ -f "$cachedir/customFronts/$1.json" ] && [ "$(($(date +%s) - $(date -r "$cachedir/customFronts/$1.json" +%s)))" -lt 86400 ] &&
+	echo "$(<"$cachedir/customFronts/$1.json")"
+}
+
+function saveCachedMe(){
+	[ ! -d "$cachedir" ] && mkdir -p "$cachedir"
+	echo "$1" > "$cachedir/me.json"
+}
+
+function saveCachedUser(){
+	[ ! -d "$cachedir/user" ] && mkdir -p "$cachedir/user"
+	echo "$2" > "$cachedir/user/$1.json"
+}
+
+function saveCachedMembers(){
+	[ ! -d "$cachedir/members" ] && mkdir -p "$cachedir/members"
+	echo "$2" > "$cachedir/members/$1.json"
+}
+
+function saveCachedCustomFronts(){
+	[ ! -d "$cachedir/customFronts" ] && mkdir -p "$cachedir/customFronts"
+ 	echo "$2" > "$cachedir/customFronts/$1.json"
 }
 
 #
