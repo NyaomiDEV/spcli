@@ -1,9 +1,12 @@
 #!/bin/bash
 
-which jq >/dev/null 2&>1 && echo "Please install \`jq\` in your system!" && exit 1
-
 config="${XDG_CONFIG_HOME:-~/.config}/spcli.conf"
 cachedir="${XDG_CACHE_HOME:-~/.cache}/spcli"
+
+if ! which jq >/dev/null 2>&1; then
+	echo "Please install \`jq\` in your system!"
+	exit 1
+fi
 
 if [ ! -f "$config" ]; then
 	echo "Config file does not exist!"
@@ -20,7 +23,7 @@ function req_get(){
 	curl --fail -sL -H "Authorization: ${TOKEN}" "https://api.apparyllis.com/v1/${1}"
 	if [ $? -ne 0 ]; then
 		echo "GET request to ${1} failed."
-		exit 1
+		return 1
 	fi
 }
 
@@ -28,7 +31,7 @@ function req_post(){
 	curl --fail -sL -X POST -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
 	if [ $? -ne 0 ]; then
 		echo "POST request to ${1} with data '${2}' failed."
-		exit 1
+		return 1
 	fi
 }
 
@@ -36,7 +39,7 @@ function req_patch(){
 	curl --fail -sL -X PATCH -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
 	if [ $? -ne 0 ]; then
 		echo "PATCH request to ${1} with data '${2}' failed."
-		exit 1
+		return 1
 	fi
 }
 
@@ -179,6 +182,8 @@ function getMe(){
 	[ -n "$_cached" ] && echo "$_cached" && return
 
 	local _netreq=$(req_get "me")
+	[ $? -gt 0 ] && return 1
+
 	[ -n "$_netreq" ] && saveCachedMe "$_netreq" && echo "$_netreq"
 }
 
@@ -187,6 +192,8 @@ function getUser(){
 	[ -n "$_cached" ] && echo "$_cached" && return
 
 	local _netreq=$(req_get "user/$1")
+	[ $? -gt 0 ] && return 1
+
 	[ -n "$_netreq" ] && saveCachedUser "$1" "$_netreq" && echo "$_netreq"
 }
 
@@ -195,6 +202,8 @@ function getMembers(){
 	[ -n "$_cached" ] && echo "$_cached" && return
 
 	local _netreq=$(req_get "members/$1")
+	[ $? -gt 0 ] && return 1
+
 	[ -n "$_netreq" ] && saveCachedMembers "$1" "$_netreq" && echo "$_netreq"
 }
 
@@ -203,6 +212,8 @@ function getCustomFronts(){
 	[ -n "$_cached" ] && echo "$_cached" && return
 
 	local _netreq=$(req_get "customFronts/$1")
+	[ $? -gt 0 ] && return 1
+
 	[ -n "$_netreq" ] && saveCachedCustomFronts "$1" "$_netreq" && echo "$_netreq"
 }
 
