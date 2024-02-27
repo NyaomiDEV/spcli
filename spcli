@@ -1,5 +1,7 @@
 #!/bin/bash
 
+which jq >/dev/null 2&>1 && echo "Please install \`jq\` in your system!" && exit 1
+
 config="${XDG_CONFIG_HOME:-~/.config}/spcli.conf"
 cachedir="${XDG_CACHE_HOME:-~/.cache}/spcli"
 
@@ -292,5 +294,26 @@ case $1 in
 		fi
 		setCustomStatus "$2" "$3"
 		exit 0
+		;;
+	help)
+		echo "SPCLI Help"
+		echo ""
+		echo "- $0 help									Shows this message."
+		echo ""
+		echo "- $0 add <memberID>						Add someone to front."
+		echo "- $0 remove <memberID>					Remove someone from front."
+		echo "- $0 set <memberID>						Set someone as front."
+		echo ""
+		echo "- $0 status <memberID> <customStatus>		Update the custom status of a fronting member."
+		echo ""
+		echo "- $0 fronts								Show the current fronting members."
+		echo ""
+		echo "- $0 friends <userID>						Query the fronters on a friends' account."
+
+		exit 0
+		;;
+	*)
+		echo "Usage: $0 <help|add|remove|set|status|fronts|friends> [...arguments]"
+		exit 1
 		;;
 esac

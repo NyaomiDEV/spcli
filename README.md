@@ -1,12 +1,18 @@
 # spcli
 
+## Prerequisites
+
+This script requires `bash` and `jq` installed in your system. Please check if you have those dependencies installed before running `spcli`.
+
 ## Usage
 
-- `spcli friends <friend name or ID>`
-- `spcli fronts`
-- `spcli add <member name or ID>`
-- `spcli remove <member name or ID>`
-- `spcli status <member name or ID> <custom status or "" to unset>`
+- spcli help: Shows the help message.
+- spcli add \<memberID\>: Add someone to front.
+- spcli remove \<memberID\>: Remove someone from front.
+- spcli set \<memberID\>: Set someone as front.
+- spcli status \<memberID\> \<customStatus\>: Update the custom status of a fronting member.
+- spcli fronts: Show the current fronting members.
+- spcli friends \<userID\>: Query the fronters on a friends' account.
 
 ## Configuration
 
