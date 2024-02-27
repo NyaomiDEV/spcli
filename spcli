@@ -186,7 +186,7 @@ function getUser(){
 	local _cached=$(getCachedUser $1)
 	[ -n "$_cached" ] && echo "$_cached" && return
 
-	local _netreq=$(req_get "users/$1")
+	local _netreq=$(req_get "user/$1")
 	[ -n "$_netreq" ] && saveCachedUser "$1" "$_netreq" && echo "$_netreq"
 }
 
