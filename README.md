@@ -7,6 +7,7 @@ This script requires `bash` and `jq` installed in your system. Please check if y
 ## Usage
 
 - spcli help: Shows the help message.
+- spcli id: Shows your user ID.
 - spcli add \<memberID\>: Add someone to front.
 - spcli remove \<memberID\>: Remove someone from front.
 - spcli set \<memberID\>: Set someone as front.

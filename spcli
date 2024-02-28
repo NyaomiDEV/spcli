@@ -13,6 +13,7 @@ if [ ! -f "$config" ]; then
 	exit 1
 fi
 
+# shellcheck disable=SC1090
 source "$config"
 
 #
@@ -20,24 +21,21 @@ source "$config"
 #
 
 function req_get(){
-	curl --fail -sL -H "Authorization: ${TOKEN}" "https://api.apparyllis.com/v1/${1}"
-	if [ $? -ne 0 ]; then
+	if ! curl --fail -sL -H "Authorization: ${TOKEN}" "https://api.apparyllis.com/v1/${1}"; then
 		echo "GET request to ${1} failed."
 		return 1
 	fi
 }
 
 function req_post(){
-	curl --fail -sL -X POST -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
-	if [ $? -ne 0 ]; then
+	if ! curl --fail -sL -X POST -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"; then
 		echo "POST request to ${1} with data '${2}' failed."
 		return 1
 	fi
 }
 
 function req_patch(){
-	curl --fail -sL -X PATCH -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"
-	if [ $? -ne 0 ]; then
+	if ! curl --fail -sL -X PATCH -H "Authorization: ${TOKEN}" -H "Content-Type: application/json" "https://api.apparyllis.com/v1/${1}" --data-raw "${2}"; then
 		echo "PATCH request to ${1} with data '${2}' failed."
 		return 1
 	fi
@@ -48,90 +46,138 @@ function req_patch(){
 #
 
 function getFriendFronters(){
-	local _user=$(getUser "$1")
-	local _fronting=$(req_get "friend/$1/getFront")
-	local _userName=$(jq -r ".content.username" <<< "$_user")
+	local _user
+	_user=$(getUser "$1")
 
-	local _members=$(getMembers "$1")
-	local _customFronts=$(getCustomFronts "$1")
+	local _fronting
+	_fronting=$(req_get "friend/$1/getFront")
 
-	echo "Currently fronting at $_userName:"
+	local _userName
+	_userName=$(jq -r ".content.username" <<< "$_user")
+
+	local _userColor
+	_userColor=$(jq -r ".content.color" <<< "$_user")
+
+	local _members
+	_members=$(getMembers "$1")
+
+	local _customFronts
+	_customFronts=$(getCustomFronts "$1")
+
+	echo "Currently fronting at $(hexColor "$_userColor")$_userName$(resetColor):"
 
 	while read -r fronter; do
-		local name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
-		local color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_members")
+		local name
+		local color
+
+		name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
+		color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_members")
 
 		if [ -z "$name" ]; then
 			name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_customFronts")
 			color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_customFronts")
 		fi
 
-		local status=$(jq -r ".statuses[\"$fronter\"]" <<< "$_fronting")
+		local status
+		status=$(jq -r ".statuses[\"$fronter\"]" <<< "$_fronting")
 
 		if [ "$status" = "null" ]; then
-			echo "$(hexColor $color)${name}$(resetColor)"
+			echo "$(hexColor "$color")${name}$(resetColor)"
 		else
-			echo "$(hexColor $color)${name}$(resetColor): ${status}"
+			echo "$(hexColor "$color")${name}$(resetColor): ${status}"
 		fi
 	done < <(jq -r ".fronters[]" <<< "$_fronting")
 }
 
 function getFronting(){
-	local _me=$(getMe | jq -r ".id")
-	local _fronting=$(req_get "fronters")
-	local _members=$(getMembers "$_me")
-	local _customFronts=$(getCustomFronts "$_me")
+	local _me
+	_me=$(getMe | jq -r ".id")
+
+	local _fronting
+	_fronting=$(req_get "fronters")
+
+	local _members
+	_members=$(getMembers "$_me")
+
+	local _customFronts
+	_customFronts=$(getCustomFronts "$_me")
 
 	echo "Currently fronting:"
 
 	while read -r fronter; do
-		local name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
-		local color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_members")
+		local name
+		local color
+
+		name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_members")
+		color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_members")
 
 		if [ -z "$name" ]; then
 			name=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$_customFronts")
 			color=$(jq -r ".[] | select(.id == \"$fronter\") | .content.color" <<< "$_customFronts")
 		fi
 
-		local status=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.customStatus" <<< "$_fronting")
-		local date=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.startTime | . / 1000 | floor" <<< "$_fronting")
-		local relativeDate=$(getRelativeDate "$date")
+		local status
+		status=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.customStatus" <<< "$_fronting")
+
+		local date
+		date=$(jq -r ".[] | select(.content.member == \"$fronter\") | .content.startTime | . / 1000 | floor" <<< "$_fronting")
+
+		local relativeDate
+		relativeDate=$(getRelativeDate "$date")
 
 		if [ "$status" = "null" ]; then
-			echo "$(hexColor $color)${name}$(resetColor) - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
+			echo "$(hexColor "$color")${name}$(resetColor) - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
 		else
-			echo "$(hexColor $color)${name}$(resetColor): ${status} - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
+			echo "$(hexColor "$color")${name}$(resetColor): ${status} - ${relativeDate} ($(date +"%c" -f - <<< "@$date"))"
 		fi
 	done < <(jq -r ".[] | .content.member" <<< "$_fronting")
 }
 
 function addFront(){
-	local _me=$(getMe | jq -r ".id")
 	local _member="$1"
-	local _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getMembers "$_me")")
-	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getCustomFronts "$_me")")
-	local _starttime=$(date +%s%3N)
 
-	local result=$(req_post "frontHistory/" "{\"custom\":false,\"startTime\":$_starttime,\"member\":\"$_member\",\"live\":true}" | jq -r .)
+	local _me
+	_me=$(getMe | jq -r ".id")
+
+	local _memberName
+	_memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getMembers "$_me")")
+	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getCustomFronts "$_me")")
+	
+	local _starttime
+	_starttime=$(date +%s%3N)
+
+	local result
+	result=$(req_post "frontHistory/" "{\"custom\":false,\"startTime\":$_starttime,\"member\":\"$_member\",\"live\":true}" | jq -r .)
 
 	echo "Added $_memberName to front. Fronting History ID: $result"
 }
 
 function removeFront(){
-	local _me=$(getMe | jq -r ".id")
 	local _member="$1"
-	local _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getMembers "$_me")")
-	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getCustomFronts "$_me")")
-	local _endtime=$(date +%s%3N)
-	local _docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
 
-	local result=$(req_patch "frontHistory/$_docId" "{\"live\":false,\"endTime\":$_endtime,\"member\":\"$_member\"}")
+	local _me
+	_me=$(getMe | jq -r ".id")
+
+	local _memberName
+	_memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getMembers "$_me")")
+	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$_member\") | .content.name" <<< "$(getCustomFronts "$_me")")
+
+	local _endtime
+	_endtime=$(date +%s%3N)
+
+	local _docId
+	_docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
+
+	local result
+	result=$(req_patch "frontHistory/$_docId" "{\"live\":false,\"endTime\":$_endtime,\"member\":\"$_member\"}")
 
 	echo "Removed $_memberName from front."
 }
 
 function setFront(){
-	local _fronting=$(req_get "fronters")
+	local _fronting
+	_fronting=$(req_get "fronters")
+
 	while read -r fronter; do
 		removeFront "$fronter"
 	done < <(jq -r ".[] | .content.member" <<< "$_fronting")
@@ -139,16 +185,30 @@ function setFront(){
 }
 
 function setCustomStatus(){
-	local _me=$(getMe | jq -r ".id")
 	local _member="$1"
-	local _memberName=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$(getMembers "$_me")")
-	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$(getCustomFronts "$_me")")
 	local _customStatus="$2"
-	local _docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
 
-	local result=$(req_patch "frontHistory/$_docId" "{\"member\":\"$_member\",\"customStatus\":\"$_customStatus\"}")
+	local _me
+	_me=$(getMe | jq -r ".id")
 
-	echo "Custom status for $_memberName set to:" $2
+	local _memberName
+	_memberName=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$(getMembers "$_me")")
+	[ -z "$_memberName" ] && _memberName=$(jq -r ".[] | select(.id == \"$fronter\") | .content.name" <<< "$(getCustomFronts "$_me")")
+	
+	local _docId
+	_docId=$(req_get "frontHistory/member/$_member" | jq -r ".[] | select(.content.member == \"$_member\" and .content.live == true) | .id")
+
+	local result
+	result=$(req_patch "frontHistory/$_docId" "{\"member\":\"$_member\",\"customStatus\":\"$_customStatus\"}")
+
+	echo "Custom status for $_memberName set to: $2"
+}
+
+function getMyID(){
+	local _me
+	_me=$(getMe | jq -r ".id")
+
+	echo "Your ID is: $_me"
 }
 
 #
@@ -170,49 +230,66 @@ function hexColor(){
 	local r="$((16#${1:1:2}))"
 	local g="$((16#${1:3:2}))"
 	local b="$((16#${1:5:2}))"
+	# shellcheck disable=SC2153
 	[ "$COLOR" == "1" ] && echo -e "\033[38;2;${r};${g};${b}m"
 }
 
 function resetColor(){
+	# shellcheck disable=SC2153
 	[ "$COLOR" == "1" ] && echo -e "\033[m"
 }
 
 function getMe(){
-	local _cached=$(getCachedMe)
+	local _cached
+	local _netreq
+	_cached=$(getCachedMe)
 	[ -n "$_cached" ] && echo "$_cached" && return
 
-	local _netreq=$(req_get "me")
-	[ $? -gt 0 ] && return 1
+	if ! _netreq=$(req_get "me"); then
+		return 1
+	fi
 
 	[ -n "$_netreq" ] && saveCachedMe "$_netreq" && echo "$_netreq"
 }
 
 function getUser(){
-	local _cached=$(getCachedUser $1)
+	local _cached
+	local _netreq
+
+	_cached=$(getCachedUser "$1")
 	[ -n "$_cached" ] && echo "$_cached" && return
 
-	local _netreq=$(req_get "user/$1")
-	[ $? -gt 0 ] && return 1
+	if ! _netreq=$(req_get "user/$1"); then
+		return 1
+	fi
 
 	[ -n "$_netreq" ] && saveCachedUser "$1" "$_netreq" && echo "$_netreq"
 }
 
 function getMembers(){
-	local _cached=$(getCachedMembers $1)
+	local _cached
+	local _netreq
+
+	_cached=$(getCachedMembers "$1")
 	[ -n "$_cached" ] && echo "$_cached" && return
 
-	local _netreq=$(req_get "members/$1")
-	[ $? -gt 0 ] && return 1
+	if ! _netreq=$(req_get "members/$1"); then
+		return 1
+	fi
 
 	[ -n "$_netreq" ] && saveCachedMembers "$1" "$_netreq" && echo "$_netreq"
 }
 
 function getCustomFronts(){
-	local _cached=$(getCachedCustomFronts $1)
+	local _cached
+	local _netreq
+
+	_cached=$(getCachedCustomFronts "$1")
 	[ -n "$_cached" ] && echo "$_cached" && return
 
-	local _netreq=$(req_get "customFronts/$1")
-	[ $? -gt 0 ] && return 1
+	if ! _netreq=$(req_get "customFronts/$1"); then
+		return 1
+	fi
 
 	[ -n "$_netreq" ] && saveCachedCustomFronts "$1" "$_netreq" && echo "$_netreq"
 }
@@ -262,16 +339,28 @@ function saveCachedCustomFronts(){
 #
 
 case $1 in
-	friends)
-		if [ -n "${users[$2]}" ]; then
-			getFriendFronters "${users[$2]}"
-			exit 0
-		fi
-		getFriendFronters "$2"
+	help)
+		c="${0##*/}"
+		echo "SPCLI Help"
+		echo ""
+		echo "- $c help					Shows this message."
+		echo ""
+		echo "- $c id					Shows your user ID."
+		echo ""
+		echo "- $c add <memberID>				Add someone to front."
+		echo "- $c remove <memberID>			Remove someone from front."
+		echo "- $c set <memberID>				Set someone as front."
+		echo ""
+		echo "- $c status <memberID> <customStatus>	Update the custom status of a fronting member."
+		echo ""
+		echo "- $c fronts					Show the current fronting members."
+		echo ""
+		echo "- $c friends <userID>			Query the fronters on a friends' account."
+
 		exit 0
 		;;
-	fronts)
-		getFronting
+	id)
+		getMyID
 		exit 0
 		;;
 	add)
@@ -306,25 +395,20 @@ case $1 in
 		setCustomStatus "$2" "$3"
 		exit 0
 		;;
-	help)
-		echo "SPCLI Help"
-		echo ""
-		echo "- $0 help									Shows this message."
-		echo ""
-		echo "- $0 add <memberID>						Add someone to front."
-		echo "- $0 remove <memberID>					Remove someone from front."
-		echo "- $0 set <memberID>						Set someone as front."
-		echo ""
-		echo "- $0 status <memberID> <customStatus>		Update the custom status of a fronting member."
-		echo ""
-		echo "- $0 fronts								Show the current fronting members."
-		echo ""
-		echo "- $0 friends <userID>						Query the fronters on a friends' account."
-
+	fronts)
+		getFronting
+		exit 0
+		;;
+	friends)
+		if [ -n "${users[$2]}" ]; then
+			getFriendFronters "${users[$2]}"
+			exit 0
+		fi
+		getFriendFronters "$2"
 		exit 0
 		;;
 	*)
-		echo "Usage: $0 <help|add|remove|set|status|fronts|friends> [...arguments]"
+		echo "Usage: $0 <help|id|add|remove|set|status|fronts|friends> [...arguments]"
 		exit 1
 		;;
 esac
